@@ -13,9 +13,9 @@ library(flexdashboard)
 ```{r paquetes, warning=FALSE, message=FALSE}
 library(dplyr)
 library(sf)
-# library(terra)
-# library(raster)
-# library(rgdal)
+library(terra)
+library(raster)
+library(rgdal)
 library(DT)
 library(plotly)
 library(leaflet)
@@ -26,7 +26,7 @@ library(shiny)
 # Lectura de una capa vectorial (GeoJSON) de provincias de Costa Rica
 provincias <-
   st_read(
-    "https://github.com/tpb728O-programaciongeoespacialr/2021ii/raw/main/datos/ign/delimitacion-territorial-administrativa/provincias.geojson",
+    "https://github.com/tpb728O-programaciongeoespacialr/2021ii/raw/main/datos/ign/delimitacion-territorial-administrativa/provincias-simplificadas_100m.geojson",
     quiet = TRUE
   )
 # Transformación del CRS del objeto provincias
@@ -48,10 +48,10 @@ felidae <-
 st_crs(felidae) <- 4326
 
 # Lectura de una capa raster de altitud
-# altitud <-
-#   rast(
-#     "/vsicurl/https://raw.githubusercontent.com/tpb728O-programaciongeoespacialr/2021ii/master/datos/worldclim/altitud.tif"
-#   )
+altitud <-
+  rast(
+    "/vsicurl/https://raw.githubusercontent.com/tpb728O-programaciongeoespacialr/2021ii/master/datos/worldclim/altitud.tif"
+  )
 
 # Lista ordenada de especies + "Todas"
 lista_especies <- unique(felidae$species)
@@ -64,10 +64,10 @@ lista_provincias <- sort(lista_provincias)
 lista_provincias <- c("Todas", lista_provincias)
 ```
 
-Column {.sidebar data-width=300}
+Column {.sidebar}
 -------------------------------------
 
-```{r column}
+```{r filtros}
 # Selector de especie
 selectInput(
   inputId = "especie",
@@ -91,15 +91,8 @@ dateRangeInput(
   separator = " a ",
   language = "es"
 )
-```
 
-Row
------------------------------------------------------------------------
-
-### Mapa de distribución
-
-```{r mapa, warning=FALSE}
-# Mapa Leaflet con capas de provincias y registros de presencia de felinos
+# Función para filtrar registros con base en los controles de entrada
 filtrarRegistros <- reactive({
   # Remoción de geometrías y selección de columnas
   felidae_filtrado <-
@@ -128,13 +121,20 @@ filtrarRegistros <- reactive({
   
   return(felidae_filtrado)
 })
+```
 
+Row
+-----------------------------------------------------------------------
+
+### Mapa de distribución
+
+```{r mapa, warning=FALSE}
 renderLeaflet({
   registros <-
     filtrarRegistros()
   
   # Conversión del objeto altitud a la clase RasterLayer
-  # altitud_rl <- raster::raster(altitud)
+  altitud_rl <- raster::raster(altitud)
   
   # Mapa Leaflet con capas de provincias y registros de presencia de felinos
   leaflet() %>%
@@ -142,8 +142,8 @@ renderLeaflet({
             lat = 9.572735,
             zoom = 7) %>%
     addTiles() %>%
-    # addRasterImage(altitud_rl,
-    #                opacity = 0.6) %>%
+    addRasterImage(altitud_rl,
+                   opacity = 0.6) %>%
     addPolygons(
       data = provincias,
       color = "black",
@@ -185,4 +185,24 @@ Row
 
 ### Estacionalidad
 
-
+```{r grafico-estacionalidad}
+renderPlotly({
+  registros <- filtrarRegistros()
+  
+  registros %>%
+    st_drop_geometry() %>%
+    group_by(mes = format(as.Date(eventDate, "%Y-%m-%d"), "%m")) %>%
+    summarize(suma_registros = n()) %>%
+    filter(!is.na(mes))  %>%
+    plot_ly(
+      x = ~ mes,
+      y = ~ suma_registros,
+      type = "scatter",
+      mode = "markers",
+      fill = "tozeroy",
+      fillcolor = "green"
+    ) %>%
+    layout(xaxis = list(title = "Mes"),
+           yaxis = list(title = "Cantidad de registros"))
+})
+```
